@@ -16,6 +16,7 @@ void setup() {
   Serial.begin(115200);
   Serial.println("Initializing Heart Rate Monitor...");
 
+  Wire.begin(41, 42);
   // Initialize sensor
   if (!particleSensor.begin(Wire, I2C_SPEED_FAST)) {
     Serial.println("MAX30105 was not found. Please check wiring/power.");
