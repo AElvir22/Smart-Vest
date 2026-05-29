@@ -1,6 +1,7 @@
 #include <Wire.h>
 #include <math.h>
 #include <WiFi.h>
+#include "MAX30105.h"
 
 // ==========================================
 // ACCELEROMETER & STEP COUNTER CONFIGURATION
@@ -30,6 +31,14 @@ unsigned long lastStepTime = 0;
 unsigned long lastSensorReadTime = 0;
 int stepCount = 0;
 bool isHigh = false;
+
+// ==========================================
+// MAX30105 TEMPERATURE SENSOR CONFIG
+// ==========================================
+
+MAX30105 particleSensor;
+unsigned long lastTempReadTime = 0;
+const unsigned long TEMP_INTERVAL = 1000; // Read temperature every 1000ms
 
 // ==========================================
 // WIFI ACCESS POINT & TCP SERVER CONFIG
@@ -66,18 +75,28 @@ void writeRegister(uint8_t deviceAddr, uint8_t regAddr, uint8_t value) {
 
 void setup() {
   Serial.begin(115200);
+  Serial.println("Initializing system...");
   
-  // 1. Initialize I2C and Accelerometer
+  // 1. Initialize Unified I2C Bus
   Wire.begin(SDA_PIN, SCL_PIN);
   
+  // 2. Initialize Accelerometer (LSM303DLHC)
   // Configure CTRL_REG1_A (100Hz data rate, normal mode, X/Y/Z axes enabled)
   writeRegister(LSM303_ACC_ADDR, CTRL_REG1_A, 0x57);
-  
   // Configure CTRL_REG4_A (High resolution mode (12-bit), +/- 2g scale)
   writeRegister(LSM303_ACC_ADDR, CTRL_REG4_A, 0x08);
   Serial.println("LSM303DLHC initialized.");
 
-  // 2. Initialize WiFi Access Point
+  // 3. Initialize MAX30105 Sensor
+  if (!particleSensor.begin(Wire, I2C_SPEED_FAST)) { 
+    Serial.println("MAX30102/5 was not found. Please check wiring/power.");
+    while (1); // Halt execution if sensor fails
+  }
+  particleSensor.setup(0); // Turn off LEDs to avoid local heating
+  particleSensor.enableDIETEMPRDY(); // Enable the temp ready interrupt
+  Serial.println("MAX30105 initialized.");
+
+  // 4. Initialize WiFi Access Point
   WiFi.mode(WIFI_AP);
   Serial.print("Starting Access Point: ");
   Serial.println(ssid);
@@ -86,7 +105,7 @@ void setup() {
   Serial.print("AP IP Address: ");
   Serial.println(WiFi.softAPIP());
 
-  // 3. Initialize TCP Server
+  // 5. Initialize TCP Server
   server.begin();
   server.setNoDelay(true);
   Serial.printf("TCP server listening on port %d\n", serverPort);
@@ -108,7 +127,7 @@ void loop() {
     if (newClient) {
       client = newClient;
       client.setNoDelay(true);
-      client.setTimeout(50); // Keep reads fast to avoid blocking the accelerometer
+      client.setTimeout(50); // Keep reads fast to avoid blocking sensors
       Serial.println("Client connected!");
       Serial.print("Client IP: ");
       Serial.println(client.remoteIP());
@@ -137,7 +156,7 @@ void loop() {
   // PART B: Accelerometer & Step Detection (100Hz)
   // --------------------------------------------------
   
-  // Non-blocking 10ms timer replaces delay(10)
+  // Non-blocking 10ms timer
   if (millis() - lastSensorReadTime >= SENSOR_INTERVAL) {
     lastSensorReadTime = millis();
 
@@ -178,5 +197,22 @@ void loop() {
         isHigh = false; 
       }
     }
+  }
+
+  // --------------------------------------------------
+  // PART C: Temperature Reading (1Hz)
+  // --------------------------------------------------
+  
+  // Non-blocking 1000ms timer
+  if (millis() - lastTempReadTime >= TEMP_INTERVAL) {
+    lastTempReadTime = millis();
+
+    float temperature = particleSensor.readTemperature();
+    float temperatureF = particleSensor.readTemperatureF();
+
+    Serial.print("temperatureC=");
+    Serial.print(temperature, 4);
+    Serial.print(" temperatureF=");
+    Serial.println(temperatureF, 4);
   }
 }
