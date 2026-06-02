@@ -12,7 +12,15 @@ const int serverPort = 80;
 #define POWER_PIN  5  
 #define SIGNAL_PIN 34 
 
-int waterLevel = 0; // variable to store the sensor value
+// --- Sensor Variables ---
+int waterLevel = 0; 
+int lastWaterLevel = -1; // Stores the previous reading
+
+// --- Tracking Variables ---
+unsigned long lastChangeTime = 0; 
+const unsigned long IDLE_TIMEOUT_MS = 15UL * 60UL * 1000UL; // 15 minutes in milliseconds
+const int NOISE_TOLERANCE = 50; // Threshold to ignore minor analog fluctuations
+bool warningSent = false; // Prevents spamming the warning
 
 // Create a WiFi client object
 WiFiClient client;
@@ -41,6 +49,9 @@ void setup() {
   Serial.println("\nConnected to the AP!");
   Serial.print("My IP Address: ");
   Serial.println(WiFi.localIP());
+
+  // Initialize the timer baseline
+  lastChangeTime = millis();
 }
 
 void loop() {
@@ -66,6 +77,21 @@ void loop() {
     waterLevel = analogRead(SIGNAL_PIN); // read the analog value from sensor
     digitalWrite(POWER_PIN, LOW);        // turn the sensor OFF immediately
 
+    // --- Check for Water Level Changes ---
+    // If the difference between current and last level is greater than the noise tolerance
+    if (abs(waterLevel - lastWaterLevel) > NOISE_TOLERANCE) {
+      lastChangeTime = millis();    // Reset the 15-minute timer
+      lastWaterLevel = waterLevel;  // Update the recorded baseline level
+      warningSent = false;          // Reset the warning flag so it can fire again later
+    }
+
+    // --- Check if 15 Minutes Have Passed ---
+    if ((millis() - lastChangeTime >= IDLE_TIMEOUT_MS) && !warningSent) {
+      Serial.println("WARNING: Water level unchanged for 15 minutes. Rehydrate!");
+      client.println("WARNING: Rehydrate!");
+      warningSent = true; // Ensure this only sends once per 15-minute idle streak
+    }
+
     // Print to local Serial Monitor
     Serial.print("Water Level Sensor Value: ");
     Serial.println(waterLevel);
@@ -74,7 +100,7 @@ void loop() {
     // println() automatically adds the '\n' character the server is looking for
     client.println(waterLevel);
     
-    // Wait for 2 seconds before sending the next reading
+    // Wait for 2 seconds before taking the next reading
     delay(2000); 
   }
 }
