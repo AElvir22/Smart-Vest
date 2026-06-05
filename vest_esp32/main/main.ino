@@ -5,6 +5,17 @@
 #include "MAX30105.h"
 #include <TinyGPSPlus.h>
 
+// ==========================================
+// CALORIE TRACKER CONFIGURATION
+// ==========================================
+// Default user weight in pounds (adjust for better accuracy)
+const float USER_WEIGHT_LBS = 160.0; 
+
+// General formula: ~0.57 x Weight(lbs) = Calories per mile. 
+// Assuming average of 2200 steps per mile.
+const float CALORIES_PER_STEP = (0.57 * USER_WEIGHT_LBS) / 2200.0;
+
+float totalCaloriesBurned = 0.0;
 
 // ==========================================
 // GPS + BUTTON CONFIG
@@ -169,6 +180,10 @@ void loop() {
       Serial.print("Satellites: ");
       Serial.println(gps.satellites.value());
 
+      // Print Current Calories on Button Press
+      Serial.print("Total Calories Burned: ");
+      Serial.println(totalCaloriesBurned, 2);
+
       Serial.println();
     } else {
       Serial.println("Location: INVALID (Waiting for Fix)");
@@ -210,7 +225,7 @@ void loop() {
   }
 
   // --------------------------------------------------
-  // PART C: Accelerometer & Step Detection
+  // PART C: Accelerometer, Step & Calorie Detection
   // --------------------------------------------------
 
   if (millis() - lastSensorReadTime >= SENSOR_INTERVAL) {
@@ -241,9 +256,13 @@ void loop() {
 
       if (smoothedMag > STEP_THRESHOLD && !isHigh) {
         if (millis() - lastStepTime > STEP_DELAY) {
+          
+          // Step Confirmed
           stepCount++;
+          totalCaloriesBurned += CALORIES_PER_STEP; // Add step calories
           lastStepTime = millis();
-          Serial.printf("Step count: %d\n", stepCount);
+          
+          Serial.printf("Steps: %d | Calories: %.2f kcal\n", stepCount, totalCaloriesBurned);
         }
 
         isHigh = true;
